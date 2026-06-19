@@ -53,6 +53,8 @@ dependencies = [
     "nvidia-nvjitlink==13.0.88 ; sys_platform == 'linux'",
     "nvidia-nvshmem-cu13==3.4.5 ; sys_platform == 'linux'",
     "nvidia-nvtx==13.0.85 ; sys_platform == 'linux'",
+    "onnx>=1.22.0",
+    "onnxruntime>=1.27.0",
     "packaging==26.2",
     "pandas==3.0.3",
     "propcache==0.5.2",
@@ -82,5 +84,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.39.8",
     "ruff>=0.15.17",
 ]
+
+[tool.basedpyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+pythonPlatform = "Linux"

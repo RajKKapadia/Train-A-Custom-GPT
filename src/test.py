@@ -44,11 +44,16 @@ def generate_samples(model, cfg: AppConfig, prompts: list[str]):
         y = model.generate(
             x,
             max_new_tokens=cfg.test.max_new_tokens,
+            eos_token_id=enc.eot_token,
             temperature=cfg.test.temperature,
             top_k=cfg.test.top_k,
+            repetition_penalty=cfg.test.repetition_penalty,
+            no_repeat_ngram_size=cfg.test.no_repeat_ngram_size,
         )
-        generated = enc.decode(y[0].tolist())
-        completion = enc.decode(y[0][x.shape[1] :].tolist())
+        generated = enc.decode(y[0].tolist()).replace("<|endoftext|>", "")
+        completion = enc.decode(y[0][x.shape[1] :].tolist()).replace(
+            "<|endoftext|>", ""
+        )
         results.append(
             {
                 "prompt": prompt,

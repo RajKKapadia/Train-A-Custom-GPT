@@ -2,22 +2,10 @@ import argparse
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 import tiktoken
 
 from src.config import CONFIG
 from src.create_model import GPT, model_config_from_dict
-
-
-def top_k_filter(logits: torch.Tensor, top_k: int | None):
-    if top_k is None or top_k <= 0:
-        return logits
-
-    values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-    min_value = values[:, -1].unsqueeze(-1)
-    return torch.where(
-        logits < min_value, torch.full_like(logits, float("-inf")), logits
-    )
 
 
 def generate(
@@ -27,36 +15,21 @@ def generate(
     eos_token_id: int | None = None,
     temperature: float = 0.8,
     top_k: int | None = 50,
+    repetition_penalty: float = 1.1,
+    no_repeat_ngram_size: int = 4,
+    use_cache: bool = True,
 ):
     model.eval()
-
-    for _ in range(max_new_tokens):
-        # Crop context if it becomes longer than block size
-        input_cond = input_ids[:, -model.config.block_size :]
-
-        with torch.no_grad():
-            logits, _ = model(input_cond)
-
-        # Take logits from the last position
-        logits = logits[:, -1, :]
-
-        if temperature <= 0:
-            # Greedy decoding
-            next_id = torch.argmax(logits, dim=-1, keepdim=True)
-        else:
-            logits = logits / temperature
-            logits = top_k_filter(logits, top_k)
-
-            probs = F.softmax(logits, dim=-1)
-            next_id = torch.multinomial(probs, num_samples=1)
-
-        input_ids = torch.cat([input_ids, next_id], dim=1)
-
-        # Stop if EOS token is generated
-        if eos_token_id is not None and next_id.item() == eos_token_id:
-            break
-
-    return input_ids
+    return model.generate(
+        idx=input_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        eos_token_id=eos_token_id,
+        repetition_penalty=repetition_penalty,
+        no_repeat_ngram_size=no_repeat_ngram_size,
+        use_cache=use_cache,
+    )
 
 
 def load_model(checkpoint_path: str | Path, device: str):
@@ -130,15 +103,35 @@ def main():
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.8,
+        default=CONFIG.test.temperature,
         help="Sampling temperature. Use 0 for greedy decoding.",
     )
 
     parser.add_argument(
         "--top-k",
         type=int,
-        default=50,
+        default=CONFIG.test.top_k,
         help="Top-k sampling. Use 0 to disable.",
+    )
+
+    parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=CONFIG.test.repetition_penalty,
+        help="Penalty for tokens already present in the prompt/context.",
+    )
+
+    parser.add_argument(
+        "--no-repeat-ngram-size",
+        type=int,
+        default=CONFIG.test.no_repeat_ngram_size,
+        help="Block any token that would repeat an n-gram of this size. Use 0 to disable.",
+    )
+
+    parser.add_argument(
+        "--no-kv-cache",
+        action="store_true",
+        help="Disable KV-cache generation and recompute the full context every token.",
     )
 
     parser.add_argument(
@@ -177,6 +170,9 @@ def main():
         eos_token_id=enc.eot_token,
         temperature=args.temperature,
         top_k=args.top_k,
+        repetition_penalty=args.repetition_penalty,
+        no_repeat_ngram_size=args.no_repeat_ngram_size,
+        use_cache=not args.no_kv_cache,
     )
 
     generated_text = enc.decode(output_ids[0].tolist())

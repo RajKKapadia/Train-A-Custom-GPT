@@ -11,6 +11,8 @@ A small decoder-only GPT training project using TinyStories and GPT-2 `tiktoken`
 - `src/test.py` — evaluates test loss/perplexity and saves generated samples
 - `main.py` — runs the process end-to-end
 - `generate.py` — generates text from a saved checkpoint
+- `export_onnx.py` — exports a checkpoint to ONNX Runtime format
+- `generate_onnx.py` — generates text from an exported ONNX model
 
 ## Setup
 
@@ -54,6 +56,23 @@ runs/tinystories-gpt/yyyy_mm_dd_hh_mm/
 ```
 
 Each experiment folder includes `config.json`, `experiment.json`, metrics files, and `best.pt`. The experiment description is saved in `experiment.json`. After a successful run, intermediate `ckpt_*.pt` files and `last.pt` are deleted by default. Use `--keep-checkpoints` if you want to retain them.
+
+## ONNX export and generation
+
+Export a trained checkpoint:
+
+```bash
+python export_onnx.py \
+  --checkpoint runs/tinystories-gpt/<experiment-folder>/best.pt
+```
+
+This writes `model.onnx` and `model.onnx.json` in the checkpoint folder. Generate with ONNX Runtime:
+
+```bash
+python generate_onnx.py \
+  --onnx runs/tinystories-gpt/<experiment-folder>/model.onnx \
+  --prompt "Once upon a time"
+```
 
 ## First-run advice
 

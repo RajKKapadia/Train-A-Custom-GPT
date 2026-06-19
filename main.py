@@ -5,8 +5,8 @@ from copy import deepcopy
 
 from src.config import CONFIG
 from src.prepare_dataset import prepare_dataset
-from src.train import train
 from src.test import test
+from src.train import train
 
 
 def main():
@@ -78,7 +78,7 @@ def main():
     if not args.skip_train:
         train_result = train(
             cfg,
-            dataset_dir=dataset_dir,
+            dataset_dir=str(dataset_dir),
             description=args.description,
         )
         dataset_dir = str(train_result.dataset_dir)
@@ -89,7 +89,7 @@ def main():
     if not args.skip_test:
         test(
             cfg,
-            dataset_dir=dataset_dir,
+            dataset_dir=str(dataset_dir),
             checkpoint_path=args.checkpoint,
         )
 

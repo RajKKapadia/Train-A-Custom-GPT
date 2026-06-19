@@ -4,6 +4,7 @@ import argparse
 from copy import deepcopy
 import json
 import random
+from typing import Any, cast
 
 import numpy as np
 import tiktoken
@@ -67,7 +68,7 @@ def prepare_dataset(cfg: DatasetConfig = CONFIG.dataset):
         token_ids = []
         print(f"Tokenizing {split_name}: {len(split_ds)} stories")
         for row in tqdm(split_ds, desc=f"{split_name}"):
-            text = row[cfg.text_column]
+            text = cast(dict[str, Any], row)[cfg.text_column]
             ids = enc.encode_ordinary(text)
             token_ids.extend(ids + [eot])
 

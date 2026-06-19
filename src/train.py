@@ -10,12 +10,13 @@ from datetime import datetime
 import json
 import math
 import time
+from typing import cast
 
 import numpy as np
 import torch
 
 from src.config import CONFIG, AppConfig, TrainConfig
-from src.create_model import create_model
+from src.create_model import GPT, create_model
 
 
 @dataclass
@@ -190,6 +191,8 @@ def train(
         description if description is not None else cfg.train.experiment_description
     )
     cfg.train.experiment_description = experiment_description
+    if cfg.train.gradient_accumulation_steps < 1:
+        raise ValueError("gradient_accumulation_steps must be at least 1")
 
     out_dir, experiment_timestamp = _make_experiment_dir(Path(cfg.train.out_dir))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -214,8 +217,9 @@ def train(
     )
 
     model = create_model(cfg.model).to(cfg.train.device)
+    forward_model: GPT = model
     if cfg.train.compile_model:
-        model = torch.compile(model)
+        forward_model = cast(GPT, torch.compile(model))
 
     optimizer = make_optimizer(model, cfg.train)
 
@@ -261,7 +265,7 @@ def train(
             param_group["lr"] = lr
 
         if iter_num % cfg.train.eval_interval == 0:
-            losses = estimate_loss(model, train_data, valid_data, cfg, ctx)
+            losses = estimate_loss(forward_model, train_data, valid_data, cfg, ctx)
             tokens_seen = (
                 iter_num
                 * cfg.train.batch_size
@@ -300,10 +304,12 @@ def train(
             break
 
         optimizer.zero_grad(set_to_none=True)
-        for micro_step in range(cfg.train.gradient_accumulation_steps):
+        current_loss: torch.Tensor | None = None
+        for _ in range(cfg.train.gradient_accumulation_steps):
             X, Y = train_data.get_batch(cfg.train.batch_size)
             with ctx:
-                _, loss = model(X, Y)
+                _, loss = forward_model(X, Y)
+                current_loss = loss.detach()
                 loss = loss / cfg.train.gradient_accumulation_steps
             scaler.scale(loss).backward()
 
@@ -314,8 +320,10 @@ def train(
         scaler.update()
 
         if iter_num % cfg.train.log_interval == 0:
+            if current_loss is None:
+                raise RuntimeError("No training loss was computed")
             print(
-                f"iter {iter_num}: loss {loss.item() * cfg.train.gradient_accumulation_steps:.4f}, lr {lr:.2e}"
+                f"iter {iter_num}: loss {current_loss.item():.4f}, lr {lr:.2e}"
             )
 
         if iter_num > 0 and iter_num % cfg.train.save_interval == 0:

@@ -50,7 +50,7 @@ class ModelConfig:
     n_layer: int = 10
     n_head: int = 8
     n_embd: int = 512
-    dropout: float = 0.15
+    dropout: float = 0.10
     bias: bool = True
 
 
@@ -89,9 +89,11 @@ class TestConfig:
     results_path: str = "runs/tinystories-gpt/test_results.json"
     num_eval_batches: int = 200
     num_generation_prompts: int = 20
-    max_new_tokens: int = 120
-    temperature: float = 0.8
+    max_new_tokens: int = 300
+    temperature: float = 0.7
     top_k: int | None = 50
+    repetition_penalty: float = 1.05
+    no_repeat_ngram_size: int = 4
     seed: int = 1337
 
 

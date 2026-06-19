@@ -3,24 +3,13 @@ import csv
 import json
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import torch
-import torch.nn.functional as F
 import tiktoken
 
 from src.config import CONFIG
-from src.create_model import GPT
-
-
-def top_k_filter(logits: torch.Tensor, top_k: int | None):
-    if top_k is None or top_k <= 0:
-        return logits
-
-    values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-    min_value = values[:, -1].unsqueeze(-1)
-    return torch.where(
-        logits < min_value, torch.full_like(logits, float("-inf")), logits
-    )
+from src.create_model import GPT, model_config_from_dict
 
 
 def generate(
@@ -30,36 +19,29 @@ def generate(
     eos_token_id: int | None = None,
     temperature: float = 0.8,
     top_k: int | None = 50,
+    repetition_penalty: float = 1.1,
+    no_repeat_ngram_size: int = 4,
+    use_cache: bool = True,
 ):
     model.eval()
+    output_ids = model.generate(
+        idx=input_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        eos_token_id=eos_token_id,
+        repetition_penalty=repetition_penalty,
+        no_repeat_ngram_size=no_repeat_ngram_size,
+        use_cache=use_cache,
+    )
+    generated_new_tokens = output_ids.size(1) - input_ids.size(1)
+    ended_with_eos = (
+        eos_token_id is not None
+        and generated_new_tokens > 0
+        and output_ids[0, -1].item() == eos_token_id
+    )
 
-    generated_new_tokens = 0
-    ended_with_eos = False
-
-    for _ in range(max_new_tokens):
-        input_cond = input_ids[:, -CONFIG.model.block_size :]
-
-        with torch.no_grad():
-            logits, _ = model(input_cond)
-
-        logits = logits[:, -1, :]
-
-        if temperature <= 0:
-            next_id = torch.argmax(logits, dim=-1, keepdim=True)
-        else:
-            logits = logits / temperature
-            logits = top_k_filter(logits, top_k)
-            probs = F.softmax(logits, dim=-1)
-            next_id = torch.multinomial(probs, num_samples=1)
-
-        input_ids = torch.cat([input_ids, next_id], dim=1)
-        generated_new_tokens += 1
-
-        if eos_token_id is not None and next_id.item() == eos_token_id:
-            ended_with_eos = True
-            break
-
-    return input_ids, generated_new_tokens, ended_with_eos
+    return output_ids, generated_new_tokens, ended_with_eos
 
 
 def load_model(checkpoint_path: str | Path, device: str):
@@ -70,7 +52,10 @@ def load_model(checkpoint_path: str | Path, device: str):
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    model = GPT(CONFIG.model)
+    model_cfg = model_config_from_dict(
+        checkpoint.get("model_config", CONFIG.model.__dict__)
+    )
+    model = GPT(model_cfg)
     model.load_state_dict(checkpoint["model"])
     model.to(device)
     model.eval()
@@ -149,14 +134,14 @@ def read_prompts(path: str | Path) -> list[str]:
     return prompts
 
 
-def save_json(path: Path, data):
+def save_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def save_csv(path: Path, rows: list[dict]):
+def save_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if not rows:
@@ -170,7 +155,7 @@ def save_csv(path: Path, rows: list[dict]):
         writer.writerows(rows)
 
 
-def save_samples_text(path: Path, rows: list[dict]):
+def save_samples_text(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8") as f:
@@ -185,7 +170,7 @@ def save_samples_text(path: Path, rows: list[dict]):
             f.write("\n\n")
 
 
-def summarize(rows: list[dict]) -> dict:
+def summarize(rows: list[dict[str, Any]]) -> dict[str, float | int]:
     total = len(rows)
 
     if total == 0:
@@ -244,15 +229,35 @@ def main():
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.8,
+        default=CONFIG.test.temperature,
         help="Sampling temperature. Use 0 for greedy decoding.",
     )
 
     parser.add_argument(
         "--top-k",
         type=int,
-        default=50,
+        default=CONFIG.test.top_k,
         help="Top-k sampling. Use 0 to disable.",
+    )
+
+    parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=CONFIG.test.repetition_penalty,
+        help="Penalty for tokens already present in the prompt/context.",
+    )
+
+    parser.add_argument(
+        "--no-repeat-ngram-size",
+        type=int,
+        default=CONFIG.test.no_repeat_ngram_size,
+        help="Block any token that would repeat an n-gram of this size. Use 0 to disable.",
+    )
+
+    parser.add_argument(
+        "--no-kv-cache",
+        action="store_true",
+        help="Disable KV-cache generation and recompute the full context every token.",
     )
 
     parser.add_argument(
@@ -329,6 +334,9 @@ def main():
                 eos_token_id=enc.eot_token,
                 temperature=args.temperature,
                 top_k=args.top_k,
+                repetition_penalty=args.repetition_penalty,
+                no_repeat_ngram_size=args.no_repeat_ngram_size,
+                use_cache=not args.no_kv_cache,
             )
 
             full_text = enc.decode(output_ids[0].tolist())
@@ -352,6 +360,9 @@ def main():
                 "ended_with_eos": ended_with_eos,
                 "temperature": args.temperature,
                 "top_k": args.top_k,
+                "repetition_penalty": args.repetition_penalty,
+                "no_repeat_ngram_size": args.no_repeat_ngram_size,
+                "use_cache": not args.no_kv_cache,
                 **text_metrics,
             }
 
@@ -376,6 +387,9 @@ def main():
             "max_new_tokens": args.max_new_tokens,
             "temperature": args.temperature,
             "top_k": args.top_k,
+            "repetition_penalty": args.repetition_penalty,
+            "no_repeat_ngram_size": args.no_repeat_ngram_size,
+            "use_cache": not args.no_kv_cache,
             "num_samples_per_prompt": args.num_samples_per_prompt,
             "seed": args.seed,
         },
