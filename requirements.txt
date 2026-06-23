@@ -24,6 +24,7 @@ attrs==26.1.0
     # via
     #   aiohttp
     #   train-a-custom-gpt
+basedpyright==1.39.8
 certifi==2026.6.17
     # via
     #   httpcore
@@ -141,6 +142,8 @@ networkx==3.6.1
     # via
     #   torch
     #   train-a-custom-gpt
+nodejs-wheel-binaries==24.16.0
+    # via basedpyright
 numpy==2.4.6
     # via
     #   datasets

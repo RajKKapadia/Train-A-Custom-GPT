@@ -1,6 +1,6 @@
 # TinyStories GPT from Scratch
 
-A small decoder-only GPT training project using TinyStories and GPT-2 `tiktoken` tokenization. It supports training/evaluation in PyTorch, cached PyTorch generation, and forward-only ONNX Runtime generation.
+A small decoder-only GPT training project using TinyStories and GPT-2 `tiktoken` tokenization. It supports training/evaluation in PyTorch and cached PyTorch generation.
 
 ## Files
 
@@ -12,8 +12,6 @@ A small decoder-only GPT training project using TinyStories and GPT-2 `tiktoken`
 - `main.py` - runs prepare/train/test end to end
 - `generate.py` - generates text from a PyTorch checkpoint
 - `evaluate_generation.py` - evaluates prompts and saves generation metrics/samples
-- `export_onnx.py` - exports a checkpoint to ONNX Runtime format
-- `generate_onnx.py` - generates text from an exported ONNX model
 
 ## Setup
 
@@ -134,52 +132,6 @@ runs/tinystories-gpt/<experiment-folder>/generation_eval/generation_eval.csv
 runs/tinystories-gpt/<experiment-folder>/generation_eval/generation_samples.txt
 ```
 
-## ONNX Export
-
-Export a trained checkpoint:
-
-```bash
-uv run python export_onnx.py \
-  --checkpoint runs/tinystories-gpt/<experiment-folder>/best.pt \
-  --output runs/tinystories-gpt/<experiment-folder>/model.onnx
-```
-
-This writes:
-
-```text
-runs/tinystories-gpt/<experiment-folder>/model.onnx
-runs/tinystories-gpt/<experiment-folder>/model.onnx.json
-```
-
-The exporter validates ONNX logits against PyTorch logits. A small max absolute difference, for example around `1e-5`, is expected.
-
-You may see PyTorch ONNX exporter warnings about the legacy exporter or tracing Python conditionals. The exported model is valid for normal generation because `generate_onnx.py` crops input length to the configured `block_size`.
-
-## ONNX Runtime Generation
-
-Generate with ONNX Runtime:
-
-```bash
-uv run python generate_onnx.py \
-  --onnx runs/tinystories-gpt/<experiment-folder>/model.onnx \
-  --prompt "Once upon a time"
-```
-
-Deterministic ONNX generation for comparing with PyTorch:
-
-```bash
-uv run python generate_onnx.py \
-  --onnx runs/tinystories-gpt/<experiment-folder>/model.onnx \
-  --prompt "Once upon a time" \
-  --max-new-tokens 16 \
-  --temperature 0 \
-  --top-k 0 \
-  --repetition-penalty 1 \
-  --no-repeat-ngram-size 0
-```
-
-The current ONNX graph is forward-only: it returns last-token logits for a cropped context and recomputes that context each generated token. The PyTorch path has KV-cache generation; a cache-aware ONNX export would require a separate graph with cache tensors as explicit inputs and outputs.
-
 ## First-Run Advice
 
 Start with `max_stories = 50_000` in `src/config.py` or pass `--max-stories 50000`. Once the pipeline works, increase it to `100_000`, `500_000`, or use `--all-stories`.
@@ -215,8 +167,6 @@ runs/tinystories-gpt/yyyy_mm_dd_hh_mm/metrics.jsonl
 runs/tinystories-gpt/yyyy_mm_dd_hh_mm/best.pt
 runs/tinystories-gpt/yyyy_mm_dd_hh_mm/test_results.json
 ```
-
-Generated ONNX artifacts live in the same experiment folder and are ignored by git because `runs/` is ignored.
 
 ## Notes
 
