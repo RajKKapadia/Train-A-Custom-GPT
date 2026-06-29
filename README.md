@@ -2,7 +2,24 @@
 
 A small decoder-only GPT training project for learning the full local LLM workflow: prepare TinyStories data, train a GPT-style model, evaluate checkpoints, generate text, and stream generations from a local API.
 
+## Process Flow
+
+The project follows one end-to-end path from raw TinyStories data to evaluated
+text generation:
+
+`setup → prepare dataset → train → validate and checkpoint → test → generate → evaluate generations`
+
 ![TinyStories GPT training process](assets/process_flow.png)
+
+## Model Architecture
+
+The model is a decoder-only Transformer for next-token prediction. Token and
+learned position embeddings pass through 10 pre-norm decoder blocks, followed
+by a final LayerNorm and a weight-tied language-model head. Each decoder block
+contains causal multi-head self-attention and a GELU MLP with residual
+connections. During generation, the attention layers can reuse a KV cache.
+
+![Decoder-only TinyStories GPT architecture](assets/decoder_only_gpt_architecture.png)
 
 ## What This Builds
 
@@ -20,6 +37,7 @@ This repo trains a compact GPT model from scratch with TinyStories and GPT-2 `ti
 - `evaluate_generation.py` - evaluates prompts and saves generation metrics/samples
 - `server.py` - serves cached generation as a FastAPI Server-Sent Events endpoint
 - `assets/process_flow.png` - workflow diagram used in this README
+- `assets/decoder_only_gpt_architecture.png` - model architecture diagram used in this README
 
 ## Setup
 
